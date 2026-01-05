@@ -1,10 +1,21 @@
-import { createDish, deleteDish, getDishDetail, getDishList, updateDish } from '@/controllers/dish.controller'
-import { requireLoginedHook } from '@/hooks/auth.hooks'
+import {
+  createDish,
+  deleteDish,
+  getDishDetail,
+  getDishList,
+  getDishListWithPagination,
+  updateDish
+} from '@/controllers/dish.controller'
+import { pauseApiHook, requireEmployeeHook, requireLoginedHook, requireOwnerHook } from '@/hooks/auth.hooks'
 import {
   CreateDishBody,
   CreateDishBodyType,
   DishListRes,
   DishListResType,
+  DishListWithPaginationQuery,
+  DishListWithPaginationQueryType,
+  DishListWithPaginationRes,
+  DishListWithPaginationResType,
   DishParams,
   DishParamsType,
   DishRes,
@@ -30,6 +41,35 @@ export default async function dishRoutes(fastify: FastifyInstance, options: Fast
       const dishs = await getDishList()
       reply.send({
         data: dishs as DishListResType['data'],
+        message: 'Lấy danh sách món ăn thành công!'
+      })
+    }
+  )
+
+  fastify.get<{
+    Reply: DishListWithPaginationResType
+    Querystring: DishListWithPaginationQueryType
+  }>(
+    '/pagination',
+    {
+      schema: {
+        response: {
+          200: DishListWithPaginationRes
+        },
+        querystring: DishListWithPaginationQuery
+      }
+    },
+    async (request, reply) => {
+      const { page, limit } = request.query
+      const data = await getDishListWithPagination(page, limit)
+      reply.send({
+        data: {
+          items: data.items as DishListWithPaginationResType['data']['items'],
+          totalItem: data.totalItem,
+          totalPage: data.totalPage,
+          page,
+          limit
+        },
         message: 'Lấy danh sách món ăn thành công!'
       })
     }
@@ -69,7 +109,10 @@ export default async function dishRoutes(fastify: FastifyInstance, options: Fast
           200: DishRes
         }
       },
-      preValidation: fastify.auth([requireLoginedHook])
+      // Login AND (Owner OR Employee)
+      preValidation: fastify.auth([requireLoginedHook, pauseApiHook, [requireOwnerHook, requireEmployeeHook]], {
+        relation: 'and'
+      })
     },
     async (request, reply) => {
       const dish = await createDish(request.body)
@@ -94,7 +137,9 @@ export default async function dishRoutes(fastify: FastifyInstance, options: Fast
           200: DishRes
         }
       },
-      preValidation: fastify.auth([requireLoginedHook])
+      preValidation: fastify.auth([requireLoginedHook, pauseApiHook, [requireOwnerHook, requireEmployeeHook]], {
+        relation: 'and'
+      })
     },
     async (request, reply) => {
       const dish = await updateDish(request.params.id, request.body)
@@ -117,7 +162,9 @@ export default async function dishRoutes(fastify: FastifyInstance, options: Fast
           200: DishRes
         }
       },
-      preValidation: fastify.auth([requireLoginedHook])
+      preValidation: fastify.auth([requireLoginedHook, pauseApiHook, [requireOwnerHook, requireEmployeeHook]], {
+        relation: 'and'
+      })
     },
     async (request, reply) => {
       const result = await deleteDish(request.params.id)

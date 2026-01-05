@@ -1,13 +1,14 @@
 import accountApiRequest from '@/apiRequests/account'
-import authApiRequest from '@/apiRequests/auth'
-import { UpdateEmployeeAccountBodyType } from '@/schemaValidations/account.schema'
+import {
+  GetGuestListQueryParamsType,
+  UpdateEmployeeAccountBodyType
+} from '@/schemaValidations/account.schema'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-export const useAccountQuery = ({ enabled }: { enabled: boolean }) => {
+export const useAccountMe = () => {
   return useQuery({
-    queryKey: ['account', 'me'],
-    queryFn: accountApiRequest.me,
-    enabled
+    queryKey: ['account-me'],
+    queryFn: accountApiRequest.me
   })
 }
 
@@ -19,18 +20,24 @@ export const useUpdateMeMutation = () => {
 
 export const useChangePasswordMutation = () => {
   return useMutation({
-    mutationFn: authApiRequest.changePassword
+    mutationFn: accountApiRequest.changePasswordV2
   })
 }
 
-export const useAccountListQuery = () => {
+export const useGetAccountList = () => {
   return useQuery({
     queryKey: ['accounts'],
     queryFn: accountApiRequest.list
   })
 }
 
-export const useGetEmployeeQuery = ({ id, enabled }: { id: number; enabled: boolean }) => {
+export const useGetAccount = ({
+  id,
+  enabled
+}: {
+  id: number
+  enabled: boolean
+}) => {
   return useQuery({
     queryKey: ['accounts', id],
     queryFn: () => accountApiRequest.getEmployee(id),
@@ -38,7 +45,7 @@ export const useGetEmployeeQuery = ({ id, enabled }: { id: number; enabled: bool
   })
 }
 
-export const useAddEmployeeMutation = () => {
+export const useAddAccountMutation = () => {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: accountApiRequest.addEmployee,
@@ -50,15 +57,46 @@ export const useAddEmployeeMutation = () => {
   })
 }
 
-export const useUpdateEmployeeMutation = () => {
+export const useUpdateAccountMutation = () => {
+  const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: UpdateEmployeeAccountBodyType & { id: number }) =>
-      accountApiRequest.updateEmployee(id, body)
+    mutationFn: ({
+      id,
+      ...body
+    }: UpdateEmployeeAccountBodyType & { id: number }) =>
+      accountApiRequest.updateEmployee(id, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['accounts'],
+        exact: true
+      })
+    }
   })
 }
 
-export const useDeleteEmployeeMutation = () => {
+export const useDeleteAccountMutation = () => {
+  const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: accountApiRequest.deleteEmployee
+    mutationFn: accountApiRequest.deleteEmployee,
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['accounts']
+      })
+    }
+  })
+}
+
+export const useGetGuestListQuery = (
+  queryParams: GetGuestListQueryParamsType
+) => {
+  return useQuery({
+    queryFn: () => accountApiRequest.guestList(queryParams),
+    queryKey: ['guests', queryParams]
+  })
+}
+
+export const useCreateGuestMutation = () => {
+  return useMutation({
+    mutationFn: accountApiRequest.createGuest
   })
 }

@@ -9,7 +9,13 @@ export const useTableListQuery = () => {
   })
 }
 
-export const useGetTableQuery = ({ id, enabled }: { id: number; enabled: boolean }) => {
+export const useGetTableQuery = ({
+  id,
+  enabled
+}: {
+  id: number
+  enabled: boolean
+}) => {
   return useQuery({
     queryKey: ['tables', id],
     queryFn: () => tableApiRequest.getTable(id),
@@ -31,11 +37,14 @@ export const useAddTableMutation = () => {
 
 export const useUpdateTableMutation = () => {
   const queryClient = useQueryClient()
+
   return useMutation({
-    mutationFn: ({ id, ...body }: UpdateTableBodyType & { id: number }) => tableApiRequest.updateTable(id, body),
+    mutationFn: ({ id, ...body }: UpdateTableBodyType & { id: number }) =>
+      tableApiRequest.updateTable(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['tables']
+        queryKey: ['tables'],
+        exact: true
       })
     }
   })
@@ -43,6 +52,7 @@ export const useUpdateTableMutation = () => {
 
 export const useDeleteTableMutation = () => {
   const queryClient = useQueryClient()
+
   return useMutation({
     mutationFn: tableApiRequest.deleteTable,
     onSuccess: () => {

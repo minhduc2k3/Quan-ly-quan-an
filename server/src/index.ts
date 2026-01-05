@@ -7,6 +7,7 @@ import authRoutes from '@/routes/auth.route'
 import fastifyAuth from '@fastify/auth'
 import fastifyCookie from '@fastify/cookie'
 import fastifyHelmet from '@fastify/helmet'
+import fastifySocketIO from 'fastify-socket.io'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import path from 'path'
@@ -18,6 +19,10 @@ import testRoutes from '@/routes/test.route'
 import { initOwnerAccount } from '@/controllers/account.controller'
 import tablesRoutes from '@/routes/table.route'
 import guestRoutes from '@/routes/guest.route'
+import orderRoutes from '@/routes/order.route'
+import { socketPlugin } from '@/plugins/socket.plugins'
+import indicatorRoutes from '@/routes/indicator.route'
+import autoRemoveRefreshTokenJob from '@/jobs/autoRemoveRefreshToken.job'
 
 const fastify = Fastify({
   logger: false
@@ -27,6 +32,7 @@ const fastify = Fastify({
 const start = async () => {
   try {
     createFolder(path.resolve(envConfig.UPLOAD_FOLDER))
+    autoRemoveRefreshTokenJob()
     const whitelist = ['*']
     fastify.register(cors, {
       origin: whitelist, // Cho phép tất cả các domain gọi API
@@ -44,6 +50,12 @@ const start = async () => {
     fastify.register(fastifyCookie)
     fastify.register(validatorCompilerPlugin)
     fastify.register(errorHandlerPlugin)
+    fastify.register(fastifySocketIO, {
+      cors: {
+        origin: envConfig.CLIENT_URL
+      }
+    })
+    fastify.register(socketPlugin)
     fastify.register(authRoutes, {
       prefix: '/auth'
     })
@@ -62,18 +74,26 @@ const start = async () => {
     fastify.register(tablesRoutes, {
       prefix: '/tables'
     })
+    fastify.register(orderRoutes, {
+      prefix: '/orders'
+    })
     fastify.register(testRoutes, {
       prefix: '/test'
     })
     fastify.register(guestRoutes, {
       prefix: '/guest'
     })
+    fastify.register(indicatorRoutes, {
+      prefix: '/indicators'
+    })
     await initOwnerAccount()
     await fastify.listen({
-      port: envConfig.PORT
+      port: envConfig.PORT,
+      host: envConfig.DOCKER ? '0.0.0.0' : 'localhost'
     })
     console.log(`Server đang chạy: ${API_URL}`)
   } catch (err) {
+    console.log(err)
     fastify.log.error(err)
     process.exit(1)
   }

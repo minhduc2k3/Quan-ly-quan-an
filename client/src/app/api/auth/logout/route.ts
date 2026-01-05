@@ -2,15 +2,15 @@ import authApiRequest from '@/apiRequests/auth'
 import { cookies } from 'next/headers'
 
 export async function POST(request: Request) {
-  const cookieStore = cookies()
-  const accessToken = cookieStore.get('accessToken')
-  const refreshToken = cookieStore.get('refreshToken')
+  const cookieStore = await cookies()
+  const accessToken = cookieStore.get('accessToken')?.value
+  const refreshToken = cookieStore.get('refreshToken')?.value
+  cookieStore.delete('accessToken')
+  cookieStore.delete('refreshToken')
   if (!accessToken || !refreshToken) {
-    cookieStore.delete('accessToken')
-    cookieStore.delete('refreshToken')
     return Response.json(
       {
-        message: 'Không nhận được access token hoặc refresh token, buộc phải xóa cookie'
+        message: 'Không nhận được access token hoặc refresh token'
       },
       {
         status: 200
@@ -18,19 +18,15 @@ export async function POST(request: Request) {
     )
   }
   try {
-    const result = await authApiRequest.logoutFromNextServerToServer({
-      accessToken: accessToken?.value,
-      refreshToken: refreshToken?.value
+    const result = await authApiRequest.sLogout({
+      accessToken,
+      refreshToken
     })
-    cookieStore.delete('accessToken')
-    cookieStore.delete('refreshToken')
     return Response.json(result.payload)
   } catch (error) {
-    cookieStore.delete('accessToken')
-    cookieStore.delete('refreshToken')
     return Response.json(
       {
-        message: 'Lỗi khi gọi API đến server backend, buộc phải xóa cookie'
+        message: 'Lỗi khi gọi API đến server backend'
       },
       {
         status: 200

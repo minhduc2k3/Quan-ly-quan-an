@@ -1,44 +1,94 @@
 'use client'
-import { createContext, useContext, useLayoutEffect, useState } from 'react'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useAccountQuery } from '@/queries/useAccount'
+import RefreshToken from '@/components/refresh-token'
+import {
+  useEffect,
+  useRef,
+} from 'react'
+import {
+  decodeToken,
+  generateSocketInstace,
+  getAccessTokenFromLocalStorage,
+  removeTokensFromLocalStorage
+} from '@/lib/utils'
+import { RoleType } from '@/types/jwt.types'
+import type { Socket } from 'socket.io-client'
+import ListenLogoutSocket from '@/components/listen-logout-socket'
+import { create } from 'zustand'
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchOnWindowFocus: false,
-      refetchOnMount: false
+      refetchOnWindowFocus: false
     }
   }
 })
-const AppContext = createContext<{
+
+
+// 1. Sửa lại Type cho đơn giản, chỉ là 1 Socket thôi
+type SocketType = Socket | undefined
+
+type AppStoreType = {
   isAuth: boolean
-  setIsAuth: (value: boolean) => void
-}>({
+  role: RoleType | undefined
+  setRole: (role?: RoleType | undefined) => void
+  socket: SocketType
+  setSocket: (socket?: SocketType) => void
+  disconnectSocket: () => void
+}
+
+export const useAppStore = create<AppStoreType>((set) => ({
   isAuth: false,
-  setIsAuth: (value: boolean) => {}
-})
+  role: undefined as RoleType | undefined,
+  setRole: (role?: RoleType | undefined) => {
+    set({ role, isAuth: Boolean(role) })
+    if (!role) {
+      removeTokensFromLocalStorage()
+    }
+  },
+  socket: undefined as SocketType,
+  setSocket: (socket?: SocketType) => set({ socket }),
+  disconnectSocket: () =>
+    set((state) => {
+      // 2. Sửa lại logic disconnect: gọi trực tiếp .disconnect() trên socket
+      if (state.socket) {
+        state.socket.disconnect()
+      }
+      return { socket: undefined }
+    })
+}))
 
-export const useAppContext = () => {
-  const context = useContext(AppContext)
-  return context
-}
+// --- 👆 HẾT PHẦN SỬA 👆 ---
 
-function Provider({ children }: { children: React.ReactNode }) {
-  const [isAuth, setIsAuth] = useState(false)
-  useAccountQuery({
-    enabled: isAuth
-  })
-  useLayoutEffect(() => {
-    const accessToken = localStorage.getItem('accessToken')
-    setIsAuth(Boolean(accessToken))
-  }, [])
-  return <AppContext.Provider value={{ isAuth, setIsAuth }}>{children}</AppContext.Provider>
-}
+export default function AppProvider({
+  children
+}: {
+  children: React.ReactNode
+}) {
+  const setRole = useAppStore((state) => state.setRole)
+  const setSocket = useAppStore((state) => state.setSocket)
+  const count = useRef(0)
 
-export default function AppProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (count.current === 0) {
+      const accessToken = getAccessTokenFromLocalStorage()
+      if (accessToken) {
+        const role = decodeToken(accessToken).role
+        setRole(role)
+        // Bây giờ dòng này sẽ không bị lỗi nữa
+        setSocket(generateSocketInstace(accessToken))
+      }
+      count.current++
+    }
+  }, [setRole, setSocket])
+
   return (
     <QueryClientProvider client={queryClient}>
-      <Provider>{children}</Provider>
+      {children}
+      <RefreshToken />
+      <ListenLogoutSocket />
+      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )
 }

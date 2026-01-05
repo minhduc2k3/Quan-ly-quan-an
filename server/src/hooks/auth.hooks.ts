@@ -1,7 +1,14 @@
+import envConfig from '@/config'
 import { Role } from '@/constants/type'
-import { AuthError } from '@/utils/errors'
+import { AuthError, ForbiddenError } from '@/utils/errors'
 import { verifyAccessToken } from '@/utils/jwt'
 import { FastifyRequest } from 'fastify'
+
+export const pauseApiHook = async (request: FastifyRequest) => {
+  if (envConfig.PAUSE_SOME_ENDPOINTS) {
+    throw new ForbiddenError('Chức năng bị tạm ngưng')
+  }
+}
 
 export const requireLoginedHook = async (request: FastifyRequest) => {
   const accessToken = request.headers.authorization?.split(' ')[1]
@@ -16,6 +23,12 @@ export const requireLoginedHook = async (request: FastifyRequest) => {
 
 export const requireOwnerHook = async (request: FastifyRequest) => {
   if (request.decodedAccessToken?.role !== Role.Owner) {
+    throw new AuthError('Bạn không có quyền truy cập')
+  }
+}
+
+export const requireEmployeeHook = async (request: FastifyRequest) => {
+  if (request.decodedAccessToken?.role !== Role.Employee) {
     throw new AuthError('Bạn không có quyền truy cập')
   }
 }

@@ -4,14 +4,20 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 export const useDishListQuery = () => {
   return useQuery({
-    queryKey: ['dishs'],
+    queryKey: ['dishes'],
     queryFn: dishApiRequest.list
   })
 }
 
-export const useGetDishQuery = ({ id, enabled }: { id: number; enabled: boolean }) => {
+export const useGetDishQuery = ({
+  id,
+  enabled
+}: {
+  id: number
+  enabled: boolean
+}) => {
   return useQuery({
-    queryKey: ['dishs', id],
+    queryKey: ['dishes', id],
     queryFn: () => dishApiRequest.getDish(id),
     enabled
   })
@@ -23,7 +29,7 @@ export const useAddDishMutation = () => {
     mutationFn: dishApiRequest.add,
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['dishs']
+        queryKey: ['dishes']
       })
     }
   })
@@ -33,10 +39,12 @@ export const useUpdateDishMutation = () => {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, ...body }: UpdateDishBodyType & { id: number }) => dishApiRequest.updateDish(id, body),
+    mutationFn: ({ id, ...body }: UpdateDishBodyType & { id: number }) =>
+      dishApiRequest.updateDish(id, body),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['dishs']
+        queryKey: ['dishes'],
+        exact: true
       })
     }
   })
@@ -49,7 +57,7 @@ export const useDeleteDishMutation = () => {
     mutationFn: dishApiRequest.deleteDish,
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['dishs']
+        queryKey: ['dishes']
       })
     }
   })

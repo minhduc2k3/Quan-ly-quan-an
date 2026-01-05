@@ -1,8 +1,8 @@
-import mediaApiRequest from '@/apiRequests/media'
+import { mediaApiRequest } from '@/apiRequests/media'
 import { useMutation } from '@tanstack/react-query'
 
-export const useUploadImageMutation = () => {
+export const useUploadMediaMutation = () => {
   return useMutation({
-    mutationFn: mediaApiRequest.uploadImage
+    mutationFn: mediaApiRequest.upload
   })
 }
