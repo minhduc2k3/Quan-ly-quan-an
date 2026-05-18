@@ -130,6 +130,18 @@ export const payOrdersController = async ({ guestId, orderHandlerId }: { guestId
         orderHandlerId
       }
     })
+
+    // [ĐÃ THÊM FIX 1] - Ép vị khách này đăng xuất (xóa token) để giải phóng bàn
+    await tx.guest.update({
+      where: {
+        id: guestId
+      },
+      data: {
+        refreshToken: null,
+        refreshTokenExpiresAt: null
+      }
+    })
+
     return updatedOrders
   })
   const [ordersResult, sockerRecord] = await Promise.all([
@@ -180,21 +192,34 @@ export const updateOrderController = async (
 ) => {
   const { status, dishId, quantity, orderHandlerId } = body
   const result = await prisma.$transaction(async (tx) => {
-    const order = await prisma.order.findUniqueOrThrow({
-      where: {
-        id: orderId
-      },
-      include: {
-        dishSnapshot: true
-      }
+    // 1. Lấy thông tin đơn hàng hiện tại
+    const order = await tx.order.findUniqueOrThrow({
+      where: { id: orderId },
+      include: { dishSnapshot: true }
     })
+
+    // --- BẮT ĐẦU LOGIC KIỂM TRA CHẶN TRẠNG THÁI ---
+    const currentStatus = order.status
+
+    // A. Nếu đơn đã THANH TOÁN  -> Khóa tuyệt đối
+    if (currentStatus === OrderStatus.Paid || currentStatus === OrderStatus.Rejected) {
+      throw new Error('Đơn hàng đã hoàn tất hoặc bị từ chối, không thể thay đổi thông tin.')
+    }
+
+    // B. Nếu đơn ĐANG NẤU (Processing) -> Chỉ được chuyển sang ĐÃ PHỤC VỤ (Delivered)
+    if (currentStatus === OrderStatus.Processing && status !== OrderStatus.Delivered && status !== currentStatus) {
+      throw new Error('Đơn hàng đang nấu chỉ có thể chuyển sang trạng thái "Đã phục vụ".')
+    }
+
+    // C. Nếu đơn ĐÃ PHỤC VỤ (Delivered) -> Chỉ được chuyển sang THANH TOÁN (Paid)
+    if (currentStatus === OrderStatus.Delivered && status !== OrderStatus.Paid && status !== currentStatus) {
+      throw new Error('Đơn hàng đã phục vụ chỉ có thể chuyển sang trạng thái "Thanh toán".')
+    }
+    // --- KẾT THÚC LOGIC KIỂM TRA ---
+
     let dishSnapshotId = order.dishSnapshotId
     if (order.dishSnapshot.dishId !== dishId) {
-      const dish = await tx.dish.findUniqueOrThrow({
-        where: {
-          id: dishId
-        }
-      })
+      const dish = await tx.dish.findUniqueOrThrow({ where: { id: dishId } })
       const dishSnapshot = await tx.dishSnapshot.create({
         data: {
           description: dish.description,
@@ -207,12 +232,11 @@ export const updateOrderController = async (
       })
       dishSnapshotId = dishSnapshot.id
     }
+
     const newOrder = await tx.order.update({
-      where: {
-        id: orderId
-      },
+      where: { id: orderId },
       data: {
-        status,
+        status, // Cập nhật trạng thái mới đã qua kiểm tra
         dishSnapshotId,
         quantity,
         orderHandlerId
@@ -223,15 +247,23 @@ export const updateOrderController = async (
         guest: true
       }
     })
+
+    // [ĐÃ THÊM FIX 2] - Nếu nhân viên đổi trạng thái món này thành Paid thì cũng xóa token khách
+    if (status === OrderStatus.Paid && newOrder.guestId) {
+      await tx.guest.update({
+        where: { id: newOrder.guestId },
+        data: {
+          refreshToken: null,
+          refreshTokenExpiresAt: null
+        }
+      })
+    }
+
     return newOrder
   })
+
   const socketRecord = await prisma.socket.findUnique({
-    where: {
-      guestId: result.guestId!
-    }
+    where: { guestId: result.guestId! }
   })
-  return {
-    order: result,
-    socketId: socketRecord?.socketId
-  }
+  return { order: result, socketId: socketRecord?.socketId }
 }

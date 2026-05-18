@@ -44,7 +44,7 @@ export default async function Dashboard() {
           <CardHeader>
             <CardTitle>Dashboard</CardTitle>
             <CardDescription>Phân tích các chỉ số</CardDescription>
-            <Link href={'/login'}>login</Link>
+            
           </CardHeader>
           <CardContent>
             <DashboardMain />

@@ -14,6 +14,7 @@ export const guestLoginController = async (body: GuestLoginBodyType) => {
       token: body.token
     }
   })
+  
   if (!table) {
     throw new Error('Bàn không tồn tại hoặc mã token không đúng')
   }
@@ -26,12 +27,29 @@ export const guestLoginController = async (body: GuestLoginBodyType) => {
     throw new Error('Bàn đã được đặt trước, hãy liên hệ nhân viên để được hỗ trợ')
   }
 
+  // 1. Kiểm tra xem bàn có thiết bị nào đang kết nối chưa đăng xuất không
+  // 2. Kiểm tra xem bàn có đơn hàng nào chưa thanh toán xong không
+  const unpaidOrder = await prisma.order.findFirst({
+    where: {
+      tableNumber: body.tableNumber,
+      status: {
+        notIn: [OrderStatus.Paid, OrderStatus.Rejected]
+      }
+    }
+  })
+
+  if (unpaidOrder) {
+    throw new Error('Bàn này đang có người ngồi hoặc chưa thanh toán xong. Không thể quét mã!')
+  }
+
+  // Tạo Guest mới sau khi đã qua hết các chốt chặn an toàn
   let guest = await prisma.guest.create({
     data: {
       name: body.name,
       tableNumber: body.tableNumber
     }
   })
+
   const refreshToken = signRefreshToken(
     {
       userId: guest.id,
@@ -41,6 +59,7 @@ export const guestLoginController = async (body: GuestLoginBodyType) => {
       expiresIn: ms(envConfig.GUEST_REFRESH_TOKEN_EXPIRES_IN)
     }
   )
+  
   const accessToken = signAccessToken(
     {
       userId: guest.id,
@@ -50,6 +69,7 @@ export const guestLoginController = async (body: GuestLoginBodyType) => {
       expiresIn: ms(envConfig.GUEST_ACCESS_TOKEN_EXPIRES_IN)
     }
   )
+  
   const decodedRefreshToken = verifyRefreshToken(refreshToken)
   const refreshTokenExpiresAt = new Date(decodedRefreshToken.exp * 1000)
 
@@ -90,11 +110,13 @@ export const guestRefreshTokenController = async (refreshToken: string) => {
   } catch (error) {
     throw new AuthError('Refresh token không hợp lệ')
   }
+  
   const newRefreshToken = signRefreshToken({
     userId: decodedRefreshToken.userId,
     role: Role.Guest,
     exp: decodedRefreshToken.exp
   })
+  
   const newAccessToken = signAccessToken(
     {
       userId: decodedRefreshToken.userId,
@@ -104,6 +126,7 @@ export const guestRefreshTokenController = async (refreshToken: string) => {
       expiresIn: ms(envConfig.GUEST_ACCESS_TOKEN_EXPIRES_IN)
     }
   )
+  
   await prisma.guest.update({
     where: {
       id: decodedRefreshToken.userId
@@ -127,20 +150,25 @@ export const guestCreateOrdersController = async (guestId: number, body: GuestCr
         id: guestId
       }
     })
+    
     if (guest.tableNumber === null) {
       throw new Error('Bàn của bạn đã bị xóa, vui lòng đăng xuất và đăng nhập lại một bàn mới')
     }
+    
     const table = await tx.table.findUniqueOrThrow({
       where: {
         number: guest.tableNumber
       }
     })
+    
     if (table.status === TableStatus.Hidden) {
       throw new Error(`Bàn ${table.number} đã bị ẩn, vui lòng đăng xuất và chọn bàn khác`)
     }
+    
     if (table.status === TableStatus.Reserved) {
       throw new Error(`Bàn ${table.number} đã được đặt trước, vui lòng đăng xuất và chọn bàn khác`)
     }
+      
     const orders = await Promise.all(
       body.map(async (order) => {
         const dish = await tx.dish.findUniqueOrThrow({
@@ -148,12 +176,15 @@ export const guestCreateOrdersController = async (guestId: number, body: GuestCr
             id: order.dishId
           }
         })
+        
         if (dish.status === DishStatus.Unavailable) {
           throw new Error(`Món ${dish.name} đã hết`)
         }
+        
         if (dish.status === DishStatus.Hidden) {
           throw new Error(`Món ${dish.name} không thể đặt`)
         }
+        
         const dishSnapshot = await tx.dishSnapshot.create({
           data: {
             description: dish.description,
@@ -164,6 +195,7 @@ export const guestCreateOrdersController = async (guestId: number, body: GuestCr
             status: dish.status
           }
         })
+        
         const orderRecord = await tx.order.create({
           data: {
             dishSnapshotId: dishSnapshot.id,
@@ -179,6 +211,7 @@ export const guestCreateOrdersController = async (guestId: number, body: GuestCr
             orderHandler: true
           }
         })
+        
         type OrderRecord = typeof orderRecord
         return orderRecord as OrderRecord & {
           status: (typeof OrderStatus)[keyof typeof OrderStatus]

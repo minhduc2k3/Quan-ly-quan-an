@@ -38,6 +38,7 @@ import { OrderTableContext } from '@/app/[locale]/manage/orders/order-table'
 import OrderGuestDetail from '@/app/[locale]/manage/orders/order-guest-detail'
 
 type OrderItem = GetOrdersResType['data'][0]
+
 const orderTableColumns: ColumnDef<OrderItem>[] = [
   {
     accessorKey: 'tableNumber',
@@ -149,6 +150,11 @@ const orderTableColumns: ColumnDef<OrderItem>[] = [
     header: 'Trạng thái',
     cell: function Cell({ row }) {
       const { changeStatus } = useContext(OrderTableContext)
+      const currentStatus = row.getValue('status') as string
+
+      // Logic: Khóa Select nếu đơn đã Thanh toán hoặc đơn cũ đã Từ chối
+      const isFinalStatus = currentStatus === OrderStatus.Paid || currentStatus === OrderStatus.Rejected
+
       const changeOrderStatus = async (
         status: (typeof OrderStatusValues)[number]
       ) => {
@@ -159,23 +165,49 @@ const orderTableColumns: ColumnDef<OrderItem>[] = [
           quantity: row.original.quantity
         })
       }
+
       return (
         <Select
           onValueChange={(value: (typeof OrderStatusValues)[number]) => {
             changeOrderStatus(value)
           }}
-          defaultValue={OrderStatus.Pending}
-          value={row.getValue('status')}
+          value={currentStatus}
+          disabled={isFinalStatus}
         >
           <SelectTrigger className='w-[140px]'>
-            <SelectValue placeholder='Theme' />
+            <SelectValue placeholder='Trạng thái' />
           </SelectTrigger>
           <SelectContent>
-            {OrderStatusValues.map((status) => (
-              <SelectItem key={status} value={status}>
-                {getVietnameseOrderStatus(status)}
-              </SelectItem>
-            ))}
+            {OrderStatusValues.map((status) => {
+              // Bỏ trạng thái "Từ chối" ra khỏi menu lựa chọn
+              if (status === OrderStatus.Rejected) return null
+
+              let isDisabled = true
+
+              // 1. Luôn cho phép hiển thị trạng thái hiện tại
+              if (status === currentStatus) isDisabled = false
+
+              // 2. Chờ xử lý -> Đang nấu
+              if (currentStatus === OrderStatus.Pending && status === OrderStatus.Processing) {
+                isDisabled = false
+              }
+
+              // 3. Đang nấu -> Đã phục vụ
+              if (currentStatus === OrderStatus.Processing && status === OrderStatus.Delivered) {
+                isDisabled = false
+              }
+
+              // 4. Đã phục vụ -> Đã thanh toán
+              if (currentStatus === OrderStatus.Delivered && status === OrderStatus.Paid) {
+                isDisabled = false
+              }
+
+              return (
+                <SelectItem key={status} value={status} disabled={isDisabled}>
+                  {getVietnameseOrderStatus(status)}
+                </SelectItem>
+              )
+            })}
           </SelectContent>
         </Select>
       )
@@ -207,8 +239,15 @@ const orderTableColumns: ColumnDef<OrderItem>[] = [
     enableHiding: false,
     cell: function Actions({ row }) {
       const { setOrderIdEdit } = useContext(OrderTableContext)
+      const currentStatus = row.getValue('status') as string
+
+      // Khóa nút "Sửa" nếu đơn hàng đã vào trạng thái cuối (Paid/Rejected)
+      const isLocked = currentStatus === OrderStatus.Paid || currentStatus === OrderStatus.Rejected
+
       const openEditOrder = () => {
-        setOrderIdEdit(row.original.id)
+        if (!isLocked) {
+          setOrderIdEdit(row.original.id)
+        }
       }
 
       return (
@@ -222,7 +261,13 @@ const orderTableColumns: ColumnDef<OrderItem>[] = [
           <DropdownMenuContent align='end'>
             <DropdownMenuLabel>Actions</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={openEditOrder}>Sửa</DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={openEditOrder} 
+              disabled={isLocked}
+              className={isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+            >
+              Sửa
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )

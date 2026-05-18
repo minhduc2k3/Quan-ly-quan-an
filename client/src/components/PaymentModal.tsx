@@ -2,16 +2,17 @@ import React, { useRef, useMemo } from 'react';
 import { useReactToPrint } from 'react-to-print';
 import InvoiceUI from './InvoiceUI';
 import { InvoiceData } from '@/types/invoice.types';
+import { OrderStatus } from '@/constants/type'; // Import hằng số OrderStatus
 
-// --- Dữ liệu giả lập (Mock Data) ---
+// --- DỮ LIỆU MẪU ĐỂ KIỂM TRA ---
 const mockOrderData = {
-    customerName: 'lan (#3)',
-    tableNumber: 1,
-    checkInTime: '23:29:27 20/11/2025',
+    customerName: 'duc',
+    tableNumber: 2,
+    checkInTime: '21:18:08 06/01/2026',
     items: [
-        { id: 1, name: 'Phở Bò', quantity: 1, price: 60000 },
+        { id: 1, name: 'Cơm gà', quantity: 1, price: 50000, status: OrderStatus.Paid },
+        { id: 2, name: 'Bún riêu cua', quantity: 1, price: 70000, status: OrderStatus.Rejected }, // Món bị từ chối
     ],
-    totalAmount: 60000,
 };
 
 interface PaymentModalProps {
@@ -19,106 +20,104 @@ interface PaymentModalProps {
 }
 
 const PaymentModal: React.FC<PaymentModalProps> = ({ onClose }) => {
-    // 1. Tạo Ref cho hóa đơn ẩn
     const invoiceRef = useRef<HTMLDivElement>(null);
 
-    // 2. Chuẩn bị dữ liệu hóa đơn (Convert từ Order sang Invoice)
-    // Dùng useMemo để dữ liệu luôn sẵn sàng, không cần chờ state update
+    // BƯỚC 1: LỌC MÓN - Đưa validItems ra ngoài cấp độ component để cả file đều dùng được
+    const validItems = useMemo(() => {
+        // Lọc bỏ tất cả món có trạng thái Rejected (Từ chối)
+        return mockOrderData.items.filter(item => item.status !== OrderStatus.Rejected);
+    }, []);
+
+    // BƯỚC 2: TÍNH TỔNG TIỀN - Dựa trên danh sách đã lọc
+    const calculatedTotal = useMemo(() => {
+        return validItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    }, [validItems]);
+
+    // BƯỚC 3: CHUẨN BỊ DỮ LIỆU HÓA ĐƠN (Gửi vào InvoiceUI)
     const invoiceData: InvoiceData = useMemo(() => ({
-        id: `HD-${Date.now().toString().slice(-6)}`,
+        id: `HD-15`,
         customerName: mockOrderData.customerName,
         tableNumber: mockOrderData.tableNumber,
         date: new Date().toLocaleString('vi-VN'),
-        items: mockOrderData.items.map(item => ({
+        items: validItems.map(item => ({
             id: item.id,
             name: item.name,
             quantity: item.quantity,
             price: item.price,
         })),
-        subtotal: mockOrderData.totalAmount,
-        total: mockOrderData.totalAmount,
+        subtotal: calculatedTotal,
+        total: calculatedTotal,
         discount: 0
-    }), []);
+    }), [validItems, calculatedTotal]);
 
-    // 3. Cấu hình in ấn: Bấm là in ngay
-    const handlePrintAndPay = useReactToPrint({
-        contentRef: invoiceRef, // Lấy nội dung từ Ref ẩn
-        documentTitle: `Bill-${mockOrderData.customerName}`,
-        onAfterPrint: () => {
-            // Sau khi in xong (hoặc tắt bảng in) thì mới đóng Modal và báo thành công
-            console.log("Thanh toán và In thành công!");
-            onClose(); 
-        },
+    // BƯỚC 4: CẤU HÌNH LỆNH IN
+    const handlePrint = useReactToPrint({
+        contentRef: invoiceRef,
+        documentTitle: `Hoa_don_${mockOrderData.customerName}`,
+        onAfterPrint: () => onClose(),
     });
 
     return (
-        <>
-            {/* ========================================================== */}
-            {/* PHẦN 1: HÓA ĐƠN ẨN (LUÔN CÓ SẴN ĐỂ CHỜ IN)                 */}
-            {/* style display: none giúp nó không hiện ra làm rối mắt      */}
-            {/* ========================================================== */}
-            <div style={{ display: "none" }}>
-                <InvoiceUI ref={invoiceRef} data={invoiceData} />
-            </div>
+        <div className="fixed inset-0 bg-black/80 z-[999] flex items-center justify-center p-4">
+            {/* Modal lớn chia làm 2 phần: Trái là thông tin, Phải là Preview hóa đơn */}
+            <div className="bg-[#0f111a] text-white rounded-xl w-[1100px] max-w-full h-[90vh] flex flex-col shadow-2xl overflow-hidden border border-gray-800">
+                
+                {/* Header Modal */}
+                <div className="flex justify-between items-center p-4 border-b border-gray-800 bg-[#161925]">
+                    <h3 className="font-bold text-xl text-blue-400 uppercase tracking-wide">Xác nhận & Xem trước hóa đơn</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl transition-colors">&times;</button>
+                </div>
 
-            {/* ========================================================== */}
-            {/* PHẦN 2: GIAO DIỆN THANH TOÁN (DARK MODE)                   */}
-            {/* ========================================================== */}
-            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-                <div className="bg-[#0f111a] text-white rounded-lg w-[600px] max-w-full shadow-2xl border border-gray-800">
-                    
-                    {/* Header Modal */}
-                    <div className="flex justify-between items-center p-4 border-b border-gray-800">
-                        <h3 className="font-bold text-lg">Khách đang ngồi tại bàn {mockOrderData.tableNumber}</h3>
-                        <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
-                    </div>
-
-                    {/* Nội dung chi tiết đơn hàng */}
-                    <div className="p-6 space-y-4">
-                        <p className="font-bold">
-                            Tên: {mockOrderData.customerName} | Bàn: {mockOrderData.tableNumber}
-                        </p>
-                        <p className="text-sm text-gray-400">Ngày đăng ký: {mockOrderData.checkInTime}</p>
-                        
-                        {/* Danh sách món */}
-                        <div className="bg-[#1a1c26] rounded p-3 mt-2 max-h-60 overflow-y-auto">
-                            {mockOrderData.items.map(item => (
-                                <div key={item.id} className="flex justify-between items-center border-b border-gray-700 py-2 last:border-0">
+                <div className="flex-1 flex overflow-hidden">
+                    {/* CỘT TRÁI: Danh sách món hợp lệ (Dark Mode) */}
+                    <div className="w-1/2 p-6 overflow-y-auto border-r border-gray-800 bg-[#11131f]">
+                        <h4 className="text-xs font-bold text-gray-500 uppercase mb-4 tracking-widest">Chi tiết đơn hàng thực tế</h4>
+                        <div className="space-y-3">
+                            {validItems.map(item => (
+                                <div key={item.id} className="p-4 bg-[#1a1c26] rounded-lg border border-gray-700 flex justify-between items-center shadow-sm">
                                     <div>
-                                        <span className="font-bold">{item.name}</span>
-                                        <span className="text-gray-400 text-sm ml-2">x{item.quantity}</span>
+                                        <p className="font-bold text-gray-200">{item.name}</p>
+                                        <p className="text-xs text-gray-500">Số lượng: {item.quantity}</p>
                                     </div>
-                                    <div className="font-mono">
-                                        {(item.price * item.quantity).toLocaleString('vi-VN')} đ
-                                    </div>
+                                    <span className="font-mono text-green-400 font-bold">{(item.price * item.quantity).toLocaleString()}đ</span>
                                 </div>
                             ))}
                         </div>
-
-                        {/* Tổng tiền */}
-                        <div className="flex gap-4 mt-4 text-sm items-center justify-between pt-2 border-t border-gray-800">
-                            <span className="text-gray-400">Tổng cộng:</span>
-                            <div className="bg-white text-black px-3 py-1 rounded font-bold text-lg">
-                                {mockOrderData.totalAmount.toLocaleString('vi-VN')} đ
+                        <div className="mt-8 pt-4 border-t border-gray-800">
+                            <div className="flex justify-between items-center text-2xl font-bold">
+                                <span className="text-gray-400">TỔNG CỘNG:</span>
+                                <span className="text-yellow-500">{calculatedTotal.toLocaleString()} đ</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* Footer: Nút Thanh Toán & In */}
-                    <div className="p-4 border-t border-gray-800">
-                        <button 
-                            onClick={() => handlePrintAndPay()} 
-                            className="w-full bg-[#1e293b] hover:bg-green-700 text-white font-bold py-4 rounded transition-colors text-lg shadow-lg flex justify-center items-center gap-3"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                            </svg>
-                            Thanh toán & In Hóa Đơn
-                        </button>
+                    {/* CỘT PHẢI: XEM TRƯỚC HÓA ĐƠN TRẮNG (PREVIEW) */}
+                    <div className="w-1/2 bg-[#2d2d2d] p-8 flex justify-center overflow-y-auto border-l border-black relative">
+                        {/* Vùng xem trước tờ hóa đơn giấy */}
+                        <div className="shadow-[0_0_60px_rgba(0,0,0,0.6)] transform scale-[0.85] origin-top bg-white">
+                            {/* InvoiceUI hiển thị trực tiếp để kiểm tra trước khi bấm In */}
+                            <InvoiceUI ref={invoiceRef} data={invoiceData} />
+                        </div>
                     </div>
                 </div>
+
+                {/* Footer Modal: Nút điều khiển */}
+                <div className="p-4 bg-[#161925] border-t border-gray-800 flex justify-end gap-4 shadow-inner">
+                    <button onClick={onClose} className="px-8 py-2 rounded bg-gray-800 hover:bg-gray-700 font-medium transition-all text-gray-300">
+                        Hủy bỏ
+                    </button>
+                    <button 
+                        onClick={() => handlePrint()} 
+                        className="px-12 py-3 rounded bg-green-600 hover:bg-green-500 font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95 text-white"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm-1 9H8v2h4v-2z" clipRule="evenodd" />
+                        </svg>
+                        XÁC NHẬN VÀ IN HÓA ĐƠN
+                    </button>
+                </div>
             </div>
-        </>
+        </div>
     );
 };
 
